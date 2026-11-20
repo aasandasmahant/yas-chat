@@ -1,0 +1,12 @@
+{
+  "name": "yas-chat",
+  "version": "1.9.0",
+  "description": "YAS CHAT in-app calling, rooms, Q&A replies, discover cards, live notice & privacy app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
