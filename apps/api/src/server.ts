@@ -36,7 +36,8 @@ await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 await app.register(cookie, { secret: env.COOKIE_SECRET });
 await app.register(jwt, { secret: env.JWT_SECRET, cookie: { cookieName: "yas_session", signed: false }, sign: { expiresIn: env.SESSION_TTL_SECONDS } });
 
-const webDist = resolve(process.cwd(), "../web/dist");
+const webDistCandidates = [resolve(process.cwd(), "../web/dist"), resolve(process.cwd(), "apps/web/dist")];
+const webDist = webDistCandidates.find(path => existsSync(path)) ?? webDistCandidates[0];
 if (existsSync(webDist)) {
   await app.register(fastifyStatic, { root: webDist, prefix: "/" });
 }
