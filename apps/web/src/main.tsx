@@ -89,7 +89,15 @@ function App() {
       if (v?.error) setNotice(v.error); else setMessageText("");
     });
   }
-  async function saveAdminSettings(e: FormEvent) {\n    e.preventDefault();\n    try { const value = JSON.parse(adminJson); const csrf = await api<{csrfToken:string}>("/api/csrf"); const result = await api<{notice:string}>("/api/admin/settings", { method:"PUT", headers:{"x-csrf-token":csrf.csrfToken}, body:JSON.stringify(value) }); setNotice(result.notice); } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save settings"); }\n  }\n  async function saveIntegration(e: FormEvent) {\n    e.preventDefault();\n    try { const secrets = JSON.parse(integrationSecrets) as Record<string,string>; const csrf = await api<{csrfToken:string}>("/api/csrf"); const result = await api<{notice:string}>(`/api/admin/integrations/${integrationProvider}`, { method:"PUT", headers:{"x-csrf-token":csrf.csrfToken}, body:JSON.stringify({enabled:integrationEnabled,secrets}) }); setNotice(result.notice); setIntegrationSecrets("{}"); } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save integration"); }\n  }\n  async function logout() {
+  async function saveAdminSettings(e: FormEvent) {
+    e.preventDefault();
+    try { const value = JSON.parse(adminJson); const csrf = await api<{csrfToken:string}>("/api/csrf"); const result = await api<{notice:string}>("/api/admin/settings", { method:"PUT", headers:{"x-csrf-token":csrf.csrfToken}, body:JSON.stringify(value) }); setNotice(result.notice); } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save settings"); }
+  }
+  async function saveIntegration(e: FormEvent) {
+    e.preventDefault();
+    try { const secrets = JSON.parse(integrationSecrets) as Record<string,string>; const csrf = await api<{csrfToken:string}>("/api/csrf"); const result = await api<{notice:string}>(`/api/admin/integrations/${integrationProvider}`, { method:"PUT", headers:{"x-csrf-token":csrf.csrfToken}, body:JSON.stringify({enabled:integrationEnabled,secrets}) }); setNotice(result.notice); setIntegrationSecrets("{}"); } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save integration"); }
+  }
+  async function logout() {
     try { const csrf = await api<{csrfToken:string}>("/api/csrf"); await api("/api/auth/logout", { method:"POST", headers:{"x-csrf-token":csrf.csrfToken} }); }
     finally { setUser(null); setMessages([]); setTab("Home"); }
   }
