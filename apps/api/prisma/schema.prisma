@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  displayName  String
+  role         UserRole    @default(USER)
+  locale       String      @default("hi-IN")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  messages     Message[]
+  posts        CommunityPost[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  roomId    String
+  authorId  String
+  body      String   @db.VarChar(5000)
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  @@index([roomId, createdAt])
+}
+
+model CommunityPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  title     String   @db.VarChar(180)
+  body      String   @db.VarChar(10000)
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  @@index([createdAt])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  provider    String
+  providerId  String
+  title       String
+  category    String
+  description String?
+  imageUrl    String?
+  buyUrl      String?
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("INR")
+  updatedAt   DateTime @updatedAt
+  @@unique([provider, providerId])
+  @@index([category, price])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  createdAt  DateTime @default(now())
+  @@index([actorId, createdAt])
+}
