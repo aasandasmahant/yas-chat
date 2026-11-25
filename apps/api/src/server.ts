@@ -146,6 +146,7 @@ app.post("/api/community/posts", { preHandler: [(app as any).authenticate] }, as
 const io = new SocketServer(app.server, { cors: { origin: env.WEB_ORIGIN, credentials: true }, maxHttpBufferSize: 64 * 1024 });
 io.use((socket, next) => {
   try {
+    if (socket.handshake.headers.origin !== env.WEB_ORIGIN) return next(new Error("Invalid origin"));
     const raw = socket.handshake.headers.cookie ?? "";
     const token = raw.split(";").map(v => v.trim()).find(v => v.startsWith("yas_session="))?.slice("yas_session=".length);
     if (!token) return next(new Error("Authentication required"));
