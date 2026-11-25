@@ -37,7 +37,7 @@ await app.register(cookie, { secret: env.COOKIE_SECRET });
 await app.register(jwt, { secret: env.JWT_SECRET, cookie: { cookieName: "yas_session", signed: false }, sign: { expiresIn: env.SESSION_TTL_SECONDS } });
 
 const webDistCandidates = [resolve(process.cwd(), "../web/dist"), resolve(process.cwd(), "apps/web/dist")];
-const webDist = webDistCandidates.find(path => existsSync(path)) ?? webDistCandidates[0];
+const webDist = webDistCandidates.find(path => existsSync(path)) ?? resolve(process.cwd(), "../web/dist");
 if (existsSync(webDist)) {
   await app.register(fastifyStatic, { root: webDist, prefix: "/" });
 }
@@ -175,7 +175,7 @@ io.on("connection", socket => {
 app.setErrorHandler((error, _request, reply) => {
   app.log.error({ err: error }, "request failed");
   const status = Number((error as any).statusCode) || 500;
-  reply.code(status >= 400 && status < 600 ? status : 500).send({ error: status >= 500 ? "Internal server error" : error.message });
+  reply.code(status >= 400 && status < 600 ? status : 500).send({ error: status >= 500 ? "Internal server error" : String((error as Error).message || "Request failed") });
 });
 app.setNotFoundHandler((request, reply) => {
   if (request.url.startsWith("/api/") || request.url.startsWith("/socket.io/")) return reply.code(404).send({ error: "Not found" });
