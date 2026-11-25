@@ -71,3 +71,17 @@ model AuditLog {
   createdAt  DateTime @default(now())
   @@index([actorId, createdAt])
 }
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+model IntegrationSecret {
+  provider          String   @id
+  encryptedPayload  String
+  enabled           Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+}
