@@ -1,12 +1,18 @@
 {
   "name": "yas-chat",
-  "version": "1.9.0",
-  "description": "YAS CHAT in-app calling, rooms, Q&A replies, discover cards, live notice & privacy app",
-  "main": "server.js",
+  "version": "2.0.0",
+  "private": true,
+  "description": "YAS Chat unified modular monolith",
+  "workspaces": ["apps/api", "apps/web"],
+  "engines": { "node": ">=22 <23", "npm": ">=10" },
   "scripts": {
-    "start": "node server.js"
+    "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w @yas-chat/api\" \"npm run dev -w @yas-chat/web\"",
+    "build": "npm run build -w @yas-chat/web && npm run typecheck -w @yas-chat/api",
+    "typecheck": "npm run typecheck -w @yas-chat/api && npm run typecheck -w @yas-chat/web",
+    "test": "npm run test -w @yas-chat/api && npm run test -w @yas-chat/web",
+    "db:generate": "npm run db:generate -w @yas-chat/api",
+    "db:migrate": "npm run db:migrate -w @yas-chat/api",
+    "start": "npm run start -w @yas-chat/api"
   },
-  "engines": {
-    "node": ">=18"
-  }
+  "devDependencies": { "concurrently": "^9.1.2" }
 }
