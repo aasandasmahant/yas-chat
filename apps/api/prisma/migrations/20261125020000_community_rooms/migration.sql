@@ -1,0 +1,14 @@
+CREATE TABLE "CommunityAnswer" ("id" TEXT NOT NULL,"postId" TEXT NOT NULL,"authorId" TEXT NOT NULL,"body" VARCHAR(10000) NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "CommunityAnswer_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "CommunityVote" ("id" TEXT NOT NULL,"postId" TEXT NOT NULL,"userId" TEXT NOT NULL,"value" INTEGER NOT NULL DEFAULT 1,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "CommunityVote_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Room" ("id" TEXT NOT NULL,"name" VARCHAR(80) NOT NULL,"description" VARCHAR(500),"isPrivate" BOOLEAN NOT NULL DEFAULT false,"createdBy" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Room_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "RoomMember" ("roomId" TEXT NOT NULL,"userId" TEXT NOT NULL,"joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "RoomMember_pkey" PRIMARY KEY ("roomId","userId"));
+CREATE INDEX "CommunityAnswer_postId_createdAt_idx" ON "CommunityAnswer"("postId","createdAt");
+CREATE UNIQUE INDEX "CommunityVote_postId_userId_key" ON "CommunityVote"("postId","userId");
+CREATE INDEX "Room_isPrivate_createdAt_idx" ON "Room"("isPrivate","createdAt");
+CREATE INDEX "RoomMember_userId_joinedAt_idx" ON "RoomMember"("userId","joinedAt");
+ALTER TABLE "CommunityAnswer" ADD CONSTRAINT "CommunityAnswer_postId_fkey" FOREIGN KEY ("postId") REFERENCES "CommunityPost"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CommunityAnswer" ADD CONSTRAINT "CommunityAnswer_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CommunityVote" ADD CONSTRAINT "CommunityVote_postId_fkey" FOREIGN KEY ("postId") REFERENCES "CommunityPost"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CommunityVote" ADD CONSTRAINT "CommunityVote_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RoomMember" ADD CONSTRAINT "RoomMember_roomId_fkey" FOREIGN KEY ("roomId") REFERENCES "Room"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RoomMember" ADD CONSTRAINT "RoomMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
