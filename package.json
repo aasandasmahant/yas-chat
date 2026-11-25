@@ -18,7 +18,8 @@
     "test": "npm run test -w @yas-chat/api && npm run test -w @yas-chat/web",
     "db:generate": "npm run db:generate -w @yas-chat/api",
     "db:migrate": "npm run db:migrate -w @yas-chat/api",
-    "start": "npm run start -w @yas-chat/api"
+    "start": "npm run start -w @yas-chat/api",
+    "admin:promote": "npm run admin:promote -w @yas-chat/api --"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
