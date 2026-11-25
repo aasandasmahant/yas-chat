@@ -9,7 +9,7 @@ import { PrismaClient } from "@prisma/client";
 import argon2 from "argon2";
 import { Server as SocketServer } from "socket.io";
 import { z } from "zod";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createCipheriv } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -20,6 +20,7 @@ const env = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
   COOKIE_SECRET: z.string().min(32),
+  ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
   SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(2592000).default(604800)
 }).parse(process.env);
 
@@ -62,6 +63,29 @@ function setCsrf(reply: any) {
   const token = randomBytes(32).toString("hex");
   reply.setCookie("csrf_token", token, { httpOnly: false, secure: env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: env.SESSION_TTL_SECONDS });
   return token;
+}
+async function adminOnly(request: any) {
+  const userId = request.user?.sub;
+  if (!userId) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (!user || user.role !== "ADMIN") throw Object.assign(new Error("Administrator access required"), { statusCode: 403 });
+}
+function encryptIntegrationSecrets(secrets: Record<string, string>) {
+  if (!env.ENCRYPTION_KEY) throw Object.assign(new Error("Set ENCRYPTION_KEY in hosting variables before saving integration secrets"), { statusCode: 503 });
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", Buffer.from(env.ENCRYPTION_KEY, "hex"), iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(secrets), "utf8"), cipher.final()]);
+  return [iv.toString("hex"), cipher.getAuthTag().toString("hex"), encrypted.toString("hex")].join(":");
+}
+const defaultMonetization = {
+  audioCalls: { enabled: false, monthlyPrice: 99, currency: "INR" },
+  videoCalls: { enabled: false, monthlyPrice: 199, currency: "INR" },
+  ads: { homeBanner: false, productBanner: false, chatBanner: false, persistentPanel: false, audioCall: false, videoCall: false },
+  payments: { checkoutEnabled: false, provider: "razorpay" }
+};
+async function readMonetization() {
+  const row = await prisma.systemSetting.findUnique({ where: { key: "monetization" } });
+  return (row?.value as typeof defaultMonetization | undefined) ?? defaultMonetization;
 }
 function setSession(reply: any, user: { id: string; role: string }) {
   const token = app.jwt.sign({ sub: user.id, role: user.role });
@@ -109,6 +133,60 @@ app.post("/api/auth/logout", async (request, reply) => {
   reply.clearCookie("yas_session", { path: "/" });
   reply.clearCookie("csrf_token", { path: "/" });
   return { success: true };
+});
+
+app.get("/api/public/config", async () => {
+  const settings = await readMonetization();
+  return {
+    calls: {
+      audioEnabled: settings.audioCalls.enabled,
+      videoEnabled: settings.videoCalls.enabled,
+      audioSubscriptionPrice: settings.audioCalls.monthlyPrice,
+      videoSubscriptionPrice: settings.videoCalls.monthlyPrice,
+      currency: settings.audioCalls.currency,
+      checkoutEnabled: settings.payments.checkoutEnabled
+    },
+    ads: settings.ads,
+    notice: "Call checkout and ad delivery remain disabled until their provider adapters and compliance checks are completed."
+  };
+});
+app.get("/api/admin/settings", { preHandler: [(app as any).authenticate, adminOnly] }, async () => {
+  const settings = await readMonetization();
+  const integrations = await prisma.integrationSecret.findMany({ select: { provider: true, enabled: true, updatedAt: true } });
+  return { monetization: settings, integrations };
+});
+app.put("/api/admin/settings", { preHandler: [(app as any).authenticate, adminOnly] }, async (request: any, reply) => {
+  requireOrigin(request); requireCsrf(request);
+  const schema = z.object({
+    audioCalls: z.object({ enabled: z.boolean(), monthlyPrice: z.number().int().min(0).max(100000), currency: z.literal("INR") }),
+    videoCalls: z.object({ enabled: z.boolean(), monthlyPrice: z.number().int().min(0).max(100000), currency: z.literal("INR") }),
+    ads: z.object({ homeBanner: z.boolean(), productBanner: z.boolean(), chatBanner: z.boolean(), persistentPanel: z.boolean(), audioCall: z.boolean(), videoCall: z.boolean() }),
+    payments: z.object({ checkoutEnabled: z.boolean(), provider: z.enum(["razorpay", "stripe"]) })
+  }).safeParse(request.body);
+  if (!schema.success) return reply.code(400).send({ error: "Invalid monetization settings" });
+  // Monetization switches configure the product only. Paid checkout stays forcibly off until a verified gateway adapter and webhook are installed.
+  const value = { ...schema.data, payments: { ...schema.data.payments, checkoutEnabled: false } };
+  await prisma.systemSetting.upsert({ where: { key: "monetization" }, create: { key: "monetization", value, updatedBy: request.user.sub }, update: { value, updatedBy: request.user.sub } });
+  await prisma.auditLog.create({ data: { actorId: request.user.sub, action: "MONETIZATION_SETTINGS_UPDATED", targetType: "SystemSetting", targetId: "monetization" } });
+  return { success: true, monetization: value, notice: "Saved. Checkout remains disabled until payment verification and webhook handling are implemented." };
+});
+app.put("/api/admin/integrations/:provider", { preHandler: [(app as any).authenticate, adminOnly] }, async (request: any, reply) => {
+  requireOrigin(request); requireCsrf(request);
+  const provider = String(request.params?.provider || "");
+  if (!["clickbank", "shareasale", "razorpay", "stripe", "livekit", "twilio", "youtube", "translation"].includes(provider)) return reply.code(404).send({ error: "Unknown integration" });
+  const input = z.object({ enabled: z.boolean(), secrets: z.record(z.string().max(500)).optional() }).safeParse(request.body);
+  if (!input.success) return reply.code(400).send({ error: "Invalid integration settings" });
+  const existing = await prisma.integrationSecret.findUnique({ where: { provider } });
+  let encryptedPayload = existing?.encryptedPayload ?? "";
+  if (input.data.secrets && Object.values(input.data.secrets).some(v => v.length > 0)) encryptedPayload = encryptIntegrationSecrets(input.data.secrets);
+  if (input.data.enabled && !encryptedPayload) return reply.code(400).send({ error: "Add the provider credentials before enabling this integration" });
+  const saved = await prisma.integrationSecret.upsert({
+    where: { provider },
+    create: { provider, enabled: input.data.enabled, encryptedPayload },
+    update: { enabled: input.data.enabled, encryptedPayload }
+  });
+  await prisma.auditLog.create({ data: { actorId: request.user.sub, action: "INTEGRATION_SETTINGS_UPDATED", targetType: "IntegrationSecret", targetId: provider } });
+  return { success: true, provider: saved.provider, enabled: saved.enabled, credentialsConfigured: Boolean(saved.encryptedPayload), notice: "Credentials are encrypted at rest. A provider adapter is still required before live transactions or calls can run." };
 });
 
 app.get("/api/discover/products", async (request, reply) => {
