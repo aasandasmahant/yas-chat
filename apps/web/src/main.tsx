@@ -55,6 +55,9 @@ function App() {
     if (tab === "Community") api<{items:Post[]}>("/api/community/posts").then(v => setPosts(v.items)).catch(e => setNotice(e.message));
   }, [tab]);
   useEffect(() => {
+    if (tab === "Admin" && user?.role === "ADMIN") api<{monetization:unknown}>("/api/admin/settings").then(v => setAdminJson(JSON.stringify(v.monetization, null, 2))).catch(e => setNotice(e.message));
+  }, [tab, user]);
+  useEffect(() => {
     if (tab === "Discover") api<{items:Product[]}>("/api/discover/products").then(v => setProducts(v.items)).catch(e => setNotice(e.message));
   }, [tab]);
 
