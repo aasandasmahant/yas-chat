@@ -43,7 +43,7 @@ if (existsSync(webDist)) {
 
 app.decorate("authenticate", async (request: FastifyRequest) => {
   try { await request.jwtVerify(); }
-  catch { throw app.httpErrors?.unauthorized?.() ?? new Error("Unauthorized"); }
+  catch { throw Object.assign(new Error("Unauthorized"), { statusCode: 401 }); }
 });
 
 function requireOrigin(request: FastifyRequest) {
