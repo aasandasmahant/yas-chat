@@ -32,7 +32,7 @@ const app = Fastify({
 });
 
 await app.register(helmet, { global: true, contentSecurityPolicy: false });
-await app.register(cors, { origin: [env.WEB_ORIGIN], credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] });
+await app.register(cors, { origin: [env.WEB_ORIGIN], credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
 await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 await app.register(cookie, { secret: env.COOKIE_SECRET });
 await app.register(jwt, { secret: env.JWT_SECRET, cookie: { cookieName: "yas_session", signed: false }, sign: { expiresIn: env.SESSION_TTL_SECONDS } });
@@ -222,6 +222,51 @@ app.post("/api/community/posts", { preHandler: [(app as any).authenticate] }, as
   return reply.code(201).send({ post });
 });
 
+
+app.get("/api/community/posts/:postId/answers", async (request: any, reply) => {
+ const postId=String(request.params.postId);
+ if(!await prisma.communityPost.findUnique({where:{id:postId},select:{id:true}})) return reply.code(404).send({error:"Post not found"});
+ return {items:await prisma.communityAnswer.findMany({where:{postId},orderBy:{createdAt:"asc"},include:{author:{select:{id:true,displayName:true}}}})};
+});
+app.post("/api/community/posts/:postId/answers",{preHandler:[(app as any).authenticate]},async(request:any,reply)=>{
+ requireOrigin(request);requireCsrf(request);
+ const input=z.object({body:z.string().trim().min(1).max(10000)}).safeParse(request.body);
+ if(!input.success)return reply.code(400).send({error:"Invalid answer"});
+ const postId=String(request.params.postId);
+ if(!await prisma.communityPost.findUnique({where:{id:postId},select:{id:true}}))return reply.code(404).send({error:"Post not found"});
+ const answer=await prisma.communityAnswer.create({data:{postId,authorId:request.user.sub,body:input.data.body},include:{author:{select:{id:true,displayName:true}}}});
+ return reply.code(201).send({answer});
+});
+app.post("/api/community/posts/:postId/vote",{preHandler:[(app as any).authenticate]},async(request:any,reply)=>{
+ requireOrigin(request);requireCsrf(request);
+ const input=z.object({value:z.number().int().min(-1).max(1)}).safeParse(request.body);
+ if(!input.success||input.data.value===0)return reply.code(400).send({error:"Vote must be 1 or -1"});
+ const postId=String(request.params.postId);
+ if(!await prisma.communityPost.findUnique({where:{id:postId},select:{id:true}}))return reply.code(404).send({error:"Post not found"});
+ await prisma.communityVote.upsert({where:{postId_userId:{postId,userId:request.user.sub}},create:{postId,userId:request.user.sub,value:input.data.value},update:{value:input.data.value}});
+ const score=await prisma.communityVote.aggregate({where:{postId},_sum:{value:true}});
+ return {success:true,score:score._sum.value??0};
+});
+app.get("/api/chat/rooms",{preHandler:[(app as any).authenticate]},async(request:any)=>{
+ const rooms=await prisma.room.findMany({where:{OR:[{isPrivate:false},{members:{some:{userId:request.user.sub}}}]},orderBy:{createdAt:"asc"},select:{id:true,name:true,description:true,isPrivate:true}});
+ return {items:[{id:"global",name:"YAS Chat Global",description:"Public global room",isPrivate:false},...rooms]};
+});
+app.post("/api/chat/rooms",{preHandler:[(app as any).authenticate]},async(request:any,reply)=>{
+ requireOrigin(request);requireCsrf(request);
+ const input=z.object({name:z.string().trim().min(3).max(80),description:z.string().trim().max(500).optional(),isPrivate:z.boolean().default(false)}).safeParse(request.body);
+ if(!input.success)return reply.code(400).send({error:"Invalid room details"});
+ const room=await prisma.room.create({data:{...input.data,createdBy:request.user.sub,members:{create:{userId:request.user.sub}}}});
+ return reply.code(201).send({room});
+});
+app.post("/api/chat/rooms/:roomId/join",{preHandler:[(app as any).authenticate]},async(request:any,reply)=>{
+ requireOrigin(request);requireCsrf(request);
+ const room=await prisma.room.findUnique({where:{id:String(request.params.roomId)}});
+ if(!room)return reply.code(404).send({error:"Room not found"});
+ if(room.isPrivate)return reply.code(403).send({error:"Private rooms require an invitation"});
+ await prisma.roomMember.upsert({where:{roomId_userId:{roomId:room.id,userId:request.user.sub}},create:{roomId:room.id,userId:request.user.sub},update:{}});
+ return {success:true};
+});
+
 const io = new SocketServer(app.server, { cors: { origin: env.WEB_ORIGIN, credentials: true }, maxHttpBufferSize: 64 * 1024 });
 io.use((socket, next) => {
   try {
@@ -236,14 +281,16 @@ io.use((socket, next) => {
 });
 io.on("connection", socket => {
   socket.on("room:join", async (roomId: unknown, ack?: (value: unknown) => void) => {
-    if (roomId !== "global") return ack?.({ error: "Only the public global room is enabled. Private/group rooms are not available yet." });
+    if(typeof roomId!=="string"||roomId.length>64)return ack?.({error:"Invalid room"});
+    if(roomId!=="global"){const room=await prisma.room.findUnique({where:{id:roomId},include:{members:{where:{userId:socket.data.userId},select:{userId:true}}}});if(!room||(room.isPrivate&&room.members.length===0))return ack?.({error:"Room not found or membership required"});if(!room.isPrivate&&room.members.length===0)await prisma.roomMember.create({data:{roomId,userId:socket.data.userId}});}
     await socket.join(roomId);
     const history = await prisma.message.findMany({ where: { roomId }, orderBy: { createdAt: "desc" }, take: 50, include: { author: { select: { id: true, displayName: true } } } });
     ack?.({ messages: history.reverse() });
   });
   socket.on("message:send", async (payload: unknown, ack?: (value: unknown) => void) => {
     const parsed = z.object({ roomId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), body: z.string().trim().min(1).max(5000) }).safeParse(payload);
-    if (!parsed.success || !socket.rooms.has(parsed.data.roomId)) return ack?.({ error: "Invalid message or room not joined" });
+    if(!parsed.success||!socket.rooms.has(parsed.data.roomId))return ack?.({error:"Invalid message or room not joined"});
+    if(parsed.data.roomId!=="global"&&!await prisma.roomMember.findUnique({where:{roomId_userId:{roomId:parsed.data.roomId,userId:socket.data.userId}}}))return ack?.({error:"Room membership required"});
     const message = await prisma.message.create({ data: { roomId: parsed.data.roomId, authorId: socket.data.userId, body: parsed.data.body }, include: { author: { select: { id: true, displayName: true } } } });
     io.to(parsed.data.roomId).emit("message:new", message);
     ack?.({ success: true, message });
