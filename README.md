@@ -47,3 +47,9 @@ Production: set deployment secrets, run npm install, generate and commit package
 - Restrict WEB_ORIGIN to the exact deployed frontend origin.
 - Keep database/provider/TURN secrets in deployment secret storage.
 - Review rate limits, CSRF, CORS, role permissions and socket room authorization before public launch.
+
+## Master build additions
+- Persistent community answers and per-user up/down votes.
+- Public/private room creation, public joining and server-side Socket.IO membership checks.
+- Admin CORS explicitly allows PUT for settings and integration updates.
+- Private-room invitations, direct messages, moderation, live provider adapters, billing, ad delivery and WebRTC/TURN/SFU remain gated until implemented and tested.
