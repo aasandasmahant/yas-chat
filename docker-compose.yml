@@ -28,8 +28,24 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       COOKIE_SECRET: ${COOKIE_SECRET:?Set COOKIE_SECRET in .env}
       SESSION_TTL_SECONDS: 604800
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
