@@ -69,3 +69,9 @@ Draft pull request: https://github.com/aasandasmahant/yas-chat/pull/1
 - Private room membership, direct messaging, admin/moderation, provider integrations, affiliate ledger, ad management, WebRTC/TURN/SFU, uploads, email verification, MFA, password recovery, backups, monitoring and full security/E2E tests remain outstanding.
 
 Release decision remains: NOT PRODUCTION READY. Do not merge the draft PR or delete source repositories until clean install, build, tests, security review and acceptance checks pass.
+
+
+### Additional implementation batch
+- Added persistent community answers/votes and room creation/join APIs with Socket.IO membership checks.
+- Corrected CORS to allow PUT for Admin settings/integration APIs.
+- Invitations, DMs, moderation, provider adapters, billing, ad serving and media calling remain release blockers.
