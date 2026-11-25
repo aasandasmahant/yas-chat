@@ -236,7 +236,7 @@ io.use((socket, next) => {
 });
 io.on("connection", socket => {
   socket.on("room:join", async (roomId: unknown, ack?: (value: unknown) => void) => {
-    if (typeof roomId !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(roomId)) return ack?.({ error: "Invalid room" });
+    if (roomId !== "global") return ack?.({ error: "Only the public global room is enabled. Private/group rooms are not available yet." });
     await socket.join(roomId);
     const history = await prisma.message.findMany({ where: { roomId }, orderBy: { createdAt: "desc" }, take: 50, include: { author: { select: { id: true, displayName: true } } } });
     ack?.({ messages: history.reverse() });
